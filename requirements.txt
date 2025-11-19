@@ -1,7 +1,6 @@
-fastapi
-uvicorn[standard]
-python-multipart
-python-pptx
-Pillow
-defusedxml
-markitdown
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+python-multipart==0.0.17
+python-pptx==1.0.2
+Pillow==11.0.0
+defusedxml==0.7.1
