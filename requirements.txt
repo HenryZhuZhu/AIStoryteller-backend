@@ -4,3 +4,5 @@ python-multipart==0.0.17
 python-pptx==1.0.2
 Pillow==11.0.0
 defusedxml==0.7.1
+six==1.16.0          # ← 新增
+lxml==5.3.0     
