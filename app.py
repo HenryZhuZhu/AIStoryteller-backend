@@ -26,7 +26,8 @@ app.add_middleware(
 SCRIPTS_DIR = Path(__file__).parent / "pptx_skills" / "scripts"
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "TeamsPPTTemplate.pptx"
 TEMP_DIR = Path(__file__).parent / "temp"
-FIXED_TEMPLATE_PATH = Path(__file__).parent / "fixed_template.pptx"  # 新增固定模板路径
+FIXED_TEMPLATE_PATH = Path(__file__).parent / "fixed_template.pptx"
+FIXED_TEMPLATE_PDF = Path(__file__).parent / "fixed_template.pdf"  # 新增：PDF文件路径
 
 # 确保临时目录存在
 TEMP_DIR.mkdir(exist_ok=True)
@@ -348,7 +349,7 @@ async def parse_ppt(file: UploadFile = File(...)):
 @app.post("/api/beautify_ppt")
 async def beautify_ppt(file: UploadFile = File(...)):
     """
-    美化用户 PPTX - 修改为始终返回固定模板
+    美化用户 PPTX - 始终返回固定模板
     """
     # 检查固定模板文件是否存在
     if not FIXED_TEMPLATE_PATH.exists():
@@ -362,11 +363,11 @@ async def beautify_ppt(file: UploadFile = File(...)):
     )
 
 
-# ========== 新增的固定模板接口 ==========
+# ========== 固定模板相关接口 ==========
 
 @app.get("/api/fixed_template_data")
 async def get_fixed_template_data():
-    """获取固定模板的解析数据"""
+    """获取固定模板的解析数据（用于HTML渲染，备用）"""
     if not FIXED_TEMPLATE_PATH.exists():
         raise HTTPException(status_code=500, detail="Fixed template file not found")
     
@@ -377,9 +378,33 @@ async def get_fixed_template_data():
     return data
 
 
+@app.get("/api/fixed_template_pdf")
+async def get_fixed_template_pdf():
+    """
+    返回固定模板的PDF文件（用于前端PDF预览）
+    这是新增的接口，直接返回预先准备好的PDF文件
+    """
+    # 检查PDF文件是否存在
+    if not FIXED_TEMPLATE_PDF.exists():
+        raise HTTPException(
+            status_code=404, 
+            detail=f"PDF文件不存在。请确保 {FIXED_TEMPLATE_PDF.name} 已上传到backend目录。"
+        )
+    
+    # 返回PDF文件
+    return FileResponse(
+        path=str(FIXED_TEMPLATE_PDF),
+        media_type="application/pdf",
+        filename="fixed_template.pdf",
+        headers={
+            "Cache-Control": "public, max-age=86400"  # 缓存1天
+        }
+    )
+
+
 @app.get("/fixed_template.pptx")
 async def get_fixed_template():
-    """提供固定模板文件下载"""
+    """提供固定模板PPTX文件下载"""
     if not FIXED_TEMPLATE_PATH.exists():
         raise HTTPException(status_code=404, detail="Fixed template not found")
     
