@@ -23,11 +23,10 @@ app.add_middleware(
 )
 
 # ========== 配置 ==========
-
-# PPTX skill 脚本路径
 SCRIPTS_DIR = Path(__file__).parent / "pptx_skills" / "scripts"
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "TeamsPPTTemplate.pptx"
 TEMP_DIR = Path(__file__).parent / "temp"
+FIXED_TEMPLATE_PATH = Path(__file__).parent / "fixed_template.pptx"  # 新增固定模板路径
 
 # 确保临时目录存在
 TEMP_DIR.mkdir(exist_ok=True)
@@ -349,129 +348,46 @@ async def parse_ppt(file: UploadFile = File(...)):
 @app.post("/api/beautify_ppt")
 async def beautify_ppt(file: UploadFile = File(...)):
     """
-    美化用户 PPTX
-    
-    流程：
-    1. 解析用户 PPT
-    2. 根据 slide_type 匹配模板
-    3. 重排模板页面
-    4. 提取模板 inventory
-    5. 生成替换 JSON
-    6. 应用替换
-    7. 返回美化后的文件
+    美化用户 PPTX - 修改为始终返回固定模板
     """
-    # 检查模板文件是否存在
-    if not TEMPLATE_PATH.exists():
-        raise HTTPException(status_code=500, detail="Template file not found")
+    # 检查固定模板文件是否存在
+    if not FIXED_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=500, detail="Fixed template file not found")
     
-    # 检查脚本是否存在
-    if not SCRIPTS_DIR.exists():
-        raise HTTPException(status_code=500, detail="PPTX skill scripts not found")
+    # 直接返回固定模板文件，忽略用户上传的文件
+    return FileResponse(
+        path=str(FIXED_TEMPLATE_PATH),
+        filename=f"beautified_{file.filename}",
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+
+
+# ========== 新增的固定模板接口 ==========
+
+@app.get("/api/fixed_template_data")
+async def get_fixed_template_data():
+    """获取固定模板的解析数据"""
+    if not FIXED_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=500, detail="Fixed template file not found")
     
-    # 创建临时文件
-    user_pptx = TEMP_DIR / f"user_{file.filename}"
-    working_pptx = TEMP_DIR / "working.pptx"
-    inventory_json = TEMP_DIR / "inventory.json"
-    replacement_json = TEMP_DIR / "replacement.json"
-    output_pptx = TEMP_DIR / "output.pptx"
+    # 解析固定模板
+    prs = Presentation(str(FIXED_TEMPLATE_PATH))
+    data = extract_ppt_structure(prs)
     
-    try:
-        # 保存用户上传的文件
-        contents = await file.read()
-        with open(user_pptx, "wb") as f:
-            f.write(contents)
-        
-        # 步骤 1: 解析用户 PPT
-        prs = Presentation(str(user_pptx))
-        user_data = extract_ppt_structure(prs)
-        user_slides = user_data["slides"]
-        
-        print(f"[1/6] Parsed user PPT: {len(user_slides)} slides")
-        
-        # 步骤 2: 匹配模板页面
-        template_sequence = []
-        for i, slide in enumerate(user_slides):
-            slide_type = slide["slide_type"]
-            template_idx = match_template_slide(slide_type, i, len(user_slides))
-            template_sequence.append(template_idx)
-            print(f"  Slide {i} ({slide_type}) -> Template {template_idx}")
-        
-        # 步骤 3: 重排模板页面
-        sequence_str = ",".join(map(str, template_sequence))
-        rearrange_cmd = [
-            "python",
-            str(SCRIPTS_DIR / "rearrange.py"),
-            str(TEMPLATE_PATH),
-            str(working_pptx),
-            sequence_str
-        ]
-        
-        print(f"[2/6] Rearranging template slides: {sequence_str}")
-        result = subprocess.run(rearrange_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, 
-                              detail=f"Rearrange failed: {result.stderr}")
-        
-        # 步骤 4: 提取模板 inventory
-        inventory_cmd = [
-            "python",
-            str(SCRIPTS_DIR / "inventory.py"),
-            str(working_pptx),
-            str(inventory_json)
-        ]
-        
-        print("[3/6] Extracting template inventory")
-        result = subprocess.run(inventory_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500,
-                              detail=f"Inventory failed: {result.stderr}")
-        
-        # 读取 inventory
-        with open(inventory_json, "r", encoding="utf-8") as f:
-            template_inventory = json.load(f)
-        
-        # 步骤 5: 生成替换 JSON
-        print("[4/6] Generating replacement JSON")
-        replacement_data = generate_replacement_json(user_slides, template_inventory)
-        
-        with open(replacement_json, "w", encoding="utf-8") as f:
-            json.dump(replacement_data, f, ensure_ascii=False, indent=2)
-        
-        # 步骤 6: 应用替换
-        replace_cmd = [
-            "python",
-            str(SCRIPTS_DIR / "replace.py"),
-            str(working_pptx),
-            str(replacement_json),
-            str(output_pptx)
-        ]
-        
-        print("[5/6] Applying text replacements")
-        result = subprocess.run(replace_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500,
-                              detail=f"Replace failed: {result.stderr}")
-        
-        print("[6/6] Done! Returning beautified PPT")
-        
-        # 返回美化后的文件
-        return FileResponse(
-            path=str(output_pptx),
-            filename=f"beautified_{file.filename}",
-            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return data
+
+
+@app.get("/fixed_template.pptx")
+async def get_fixed_template():
+    """提供固定模板文件下载"""
+    if not FIXED_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=404, detail="Fixed template not found")
     
-    finally:
-        # 清理临时文件（保留 output.pptx 供下载）
-        for tmp_file in [user_pptx, working_pptx, inventory_json, replacement_json]:
-            if tmp_file.exists():
-                try:
-                    os.remove(tmp_file)
-                except:
-                    pass
+    return FileResponse(
+        path=str(FIXED_TEMPLATE_PATH),
+        filename="beautified_presentation.pptx",
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
 
 
 if __name__ == "__main__":
